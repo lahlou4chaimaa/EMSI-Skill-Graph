@@ -1,0 +1,241 @@
+﻿
+========== app\services\embedding_service.py ==========
+import httpx
+
+from app.core.config import settings
+
+
+async def generate_embedding(text: str) -> list[float]:
+    url = f"{settings.ollama_url}/api/embeddings"
+
+    payload = {
+        "model": settings.ollama_embedding_model,
+        "prompt": text,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+
+        data = response.json()
+        embedding = data.get("embedding")
+
+        if not embedding:
+            raise ValueError("Ollama returned an empty embedding.")
+
+        if len(embedding) != 768:
+            raise ValueError(
+                f"Expected 768 dimensions, received {len(embedding)}."
+            )
+
+        return embedding
+
+    except httpx.HTTPError as error:
+        raise RuntimeError(
+            f"Could not generate embedding with Ollama: {error}"
+        ) from error
+
+========== app\services\retrieval_service.py ==========
+
+========== app\services\llm_service.py ==========
+
+========== app\api\documents.py ==========
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
+
+from app.services.pdf_service import (
+    extract_pdf_text,
+    split_into_chunks,
+)
+from app.services.embedding_service import generate_embedding
+from app.services.knowledge_service import (
+    save_document,
+    save_chunks,
+)
+
+router = APIRouter(prefix="/documents", tags=["Documents"])
+
+UPLOAD_DIR = Path("storage/uploads")
+MAX_FILE_SIZE = 15 * 1024 * 1024
+
+
+@router.post("/upload")
+async def upload_document(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(400, "Filename is required.")
+
+    if Path(file.filename).suffix.lower() != ".pdf":
+        raise HTTPException(400, "Only PDF files are supported.")
+
+    pdf_bytes = await file.read(MAX_FILE_SIZE + 1)
+
+    if len(pdf_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(413, "PDF exceeds 15 MB.")
+
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise HTTPException(400, "Invalid PDF file.")
+
+    document_id = str(uuid4())
+    file_path = UPLOAD_DIR / f"{document_id}.pdf"
+
+    try:
+        pages = extract_pdf_text(pdf_bytes)
+        chunks = split_into_chunks(pages)
+
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        file_path.write_bytes(pdf_bytes)
+
+        # Generate one embedding for every chunk.
+        chunk_records = []
+
+        for chunk in chunks:
+            embedding = await generate_embedding(chunk.content)
+
+            chunk_records.append({
+                "document_id": document_id,
+                "content": chunk.content,
+                "page_number": chunk.page_number,
+                "chunk_index": chunk.chunk_index,
+                "embedding": embedding,
+            })
+
+        # Save the document and its chunks.
+        save_document(
+            document_id=document_id,
+            filename=Path(file.filename).name,
+            total_pages=len(pages),
+            total_chunks=len(chunks),
+        )
+
+        save_chunks(
+            document_id=document_id,
+            chunks=chunk_records,
+        )
+
+        return {
+            "document_id": document_id,
+            "filename": Path(file.filename).name,
+            "pages_extracted": len(pages),
+            "chunks_created": len(chunks),
+            "embeddings_created": len(chunk_records),
+            "embedding_dimensions": 768,
+            "status": "indexed",
+        }
+
+    except Exception as error:
+        file_path.unlink(missing_ok=True)
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Document processing failed: {str(error)}",
+        ) from error
+
+========== app\core\config.py ==========
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    supabase_url: str
+    supabase_service_role_key: str
+
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_embedding_model: str = "nomic-embed-text"
+    ollama_chat_model: str = "llama3.2:3b"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
+settings = Settings()
+
+========== app\services\pdf_service.py ==========
+import re
+from dataclasses import dataclass
+
+import pymupdf
+
+@dataclass
+class DocumentChunk:
+    content: str
+    page_number: int
+    chunk_index: int
+
+
+def clean_text(text: str) -> str:
+    text = text.replace("\x00", " ")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def extract_pdf_text(pdf_bytes: bytes) -> list[dict]:
+    pages = []
+
+    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as document:
+        if document.is_encrypted:
+            raise ValueError("Encrypted PDF files are not supported.")
+
+        for page_number, page in enumerate(document, start=1):
+            text = clean_text(page.get_text("text"))
+
+            if text:
+                pages.append({
+                    "page_number": page_number,
+                    "text": text,
+                })
+
+    if not pages:
+        raise ValueError(
+            "No text found in this PDF. It may be a scanned document."
+        )
+
+    return pages
+
+
+def split_into_chunks(
+    pages: list[dict],
+    chunk_size: int = 1200,
+    overlap: int = 150,
+) -> list[DocumentChunk]:
+
+    if chunk_size <= 0 or overlap < 0 or overlap >= chunk_size:
+        raise ValueError("Invalid chunk_size or overlap.")
+
+    chunks = []
+
+    for page in pages:
+        text = page["text"]
+        start = 0
+
+        while start < len(text):
+            end = min(start + chunk_size, len(text))
+
+            if end < len(text):
+                boundary = text.rfind(" ", start, end)
+
+                if boundary > start:
+                    end = boundary
+
+            content = text[start:end].strip()
+
+            if content:
+                chunks.append(
+                    DocumentChunk(
+                        content=content,
+                        page_number=page["page_number"],
+                        chunk_index=len(chunks),
+                    )
+                )
+
+            if end >= len(text):
+                break
+
+            start = max(start + 1, end - overlap)
+
+    return chunks
