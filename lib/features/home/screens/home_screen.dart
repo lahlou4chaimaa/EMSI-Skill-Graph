@@ -6,6 +6,7 @@ import '../../profile/services/profile_service.dart';
 import '../../skills/screens/my_skills_screen.dart';
 import '../../career/screens/career_screens.dart';
 import '../../map/screens/student_map_screen.dart';
+import '../../ai_assistant/screens/ai_assistant_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -93,6 +94,15 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => const StudentMapScreen(),
+      ),
+    );
+  }
+
+  void _openAiAssistant() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AiAssistantScreen(),
       ),
     );
   }
@@ -210,6 +220,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ],
+            ),
+
+            const SizedBox(height: 12),
+
+            _FeatureCard(
+              icon: Icons.smart_toy_outlined,
+              title: 'EMSI Assistant',
+              subtitle: 'Ask questions and get AI-powered answers',
+              onTap: _openAiAssistant,
             ),
 
             const SizedBox(height: 12),

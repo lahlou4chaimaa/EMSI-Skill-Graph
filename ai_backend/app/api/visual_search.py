@@ -1,10 +1,16 @@
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+)
 from pydantic import BaseModel
 
-from app.services.ocr_service import extract_image_text
 from app.services.retrieval_service import search_knowledge
 from app.services.llm_service import generate_answer
+from app.services.vision_service import analyze_image_with_qwen
 from app.services.image_index_service import index_all_brochures
 
 
@@ -24,6 +30,7 @@ class VisualSource(BaseModel):
 
 
 class VisualSearchResponse(BaseModel):
+    visual_description: str
     extracted_text: list[dict]
     answer: str
     sources: list[VisualSource]
@@ -51,20 +58,12 @@ async def index_brochure_images():
     "/analyze",
     response_model=VisualSearchResponse,
 )
-async def analyze_image(file: UploadFile = File(...)):
-
-    allowed_types = {
-        "image/jpeg",
-        "image/png",
-        "image/webp",
-    }
-
-    if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400,
-            detail="Only JPG, PNG and WEBP images are supported.",
-        )
-
+async def analyze_image(
+    file: UploadFile = File(...),
+    question: str = Form(
+        default="Décris cette image et donne les informations utiles."
+    ),
+):
     image_bytes = await file.read(MAX_IMAGE_SIZE + 1)
 
     if len(image_bytes) > MAX_IMAGE_SIZE:
@@ -80,42 +79,44 @@ async def analyze_image(file: UploadFile = File(...)):
         )
 
     try:
-        extracted = extract_image_text(image_bytes)
-
-        if not extracted:
-            return {
-                "extracted_text": [],
-                "answer": (
-                    "Aucun texte exploitable n'a été détecté "
-                    "dans cette image. Je ne peux donc pas "
-                    "retrouver d'information documentaire fiable."
-                ),
-                "sources": [],
-            }
-
-        ocr_text = "\n".join(
-            item["text"] for item in extracted
+        # 1. Understand the image with Qwen3-VL.
+        visual_description = await analyze_image_with_qwen(
+            image_bytes
         )
 
-        question = (
-            "Recherche des informations documentaires "
-            "correspondant aux textes visibles dans cette image. "
-            "Retrouve les personnes mentionnées uniquement "
-            "si les documents établissent explicitement "
-            "leur nom et leur fonction.\n\n"
-            f"Textes extraits de l'image :\n{ocr_text}"
-        )
+        # 2. Combine the user's question with the visual description.
+        retrieval_question = f"""
+QUESTION DE L'ÉTUDIANT :
+{question.strip()}
 
+DESCRIPTION VISUELLE PRODUITE PAR QWEN3-VL :
+{visual_description}
+
+Recherche dans les documents EMSI les informations
+qui répondent à la question de l'étudiant.
+
+Si la question concerne une personne visible dans l'image,
+ne lui attribue un nom ou une fonction que si les documents
+contiennent une légende ou une indication textuelle explicite
+qui établit cette association.
+Ne déduis jamais une identité à partir du visage.
+"""
+
+        # 3. Retrieve official information from Supabase.
         chunks = await search_knowledge(
-            question=question,
+            question=retrieval_question,
             match_count=5,
             match_threshold=0.30,
         )
 
-        answer = await generate_answer(
-            question=question,
-            context_chunks=chunks,
-        )
+        # 4. Generate the final answer.
+        if chunks:
+            answer = await generate_answer(
+                question=retrieval_question,
+                context_chunks=chunks,
+            )
+        else:
+            answer = visual_description
 
         sources = [
             {
@@ -123,14 +124,16 @@ async def analyze_image(file: UploadFile = File(...)):
                 "page_number": chunk["page_number"],
                 "chunk_index": chunk["chunk_index"],
                 "similarity": round(
-                    float(chunk["similarity"]), 4
+                    float(chunk["similarity"]),
+                    4,
                 ),
             }
             for chunk in chunks
         ]
 
         return {
-            "extracted_text": extracted,
+            "visual_description": visual_description,
+            "extracted_text": [],
             "answer": answer,
             "sources": sources,
         }

@@ -12,13 +12,15 @@ class LiveLocationService {
   bool get isSharing => _positionSubscription != null;
 
   Future<void> _checkLocationPermission() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final serviceEnabled =
+        await Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
       throw Exception('Active la localisation GPS de ton téléphone.');
     }
 
-    LocationPermission permission = await Geolocator.checkPermission();
+    LocationPermission permission =
+        await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -58,16 +60,14 @@ class LiveLocationService {
     await _positionSubscription?.cancel();
     _positionSubscription = null;
 
-    // Enregistrer immédiatement la position actuelle.
-    final currentPosition = await Geolocator.getCurrentPosition(
+    final position = await Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
       ),
     );
 
-    await _savePosition(user.id, currentPosition);
+    await _savePosition(user.id, position);
 
-    // Mettre à jour la position lorsque le téléphone se déplace.
     _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
@@ -75,10 +75,9 @@ class LiveLocationService {
       ),
     ).listen(
       (position) {
-        _savePosition(user.id, position);
-      },
-      onError: (error) {
-        // L'écran pourra afficher cette erreur dans une prochaine étape.
+        _savePosition(user.id, position).catchError((error) {
+          // Une erreur d'enregistrement ne doit pas arrêter le flux GPS.
+        });
       },
     );
   }

@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -48,6 +47,7 @@ class _LiveLocationSettingsScreenState
           .single();
 
       final enabled = profile['live_location_enabled'] == true;
+
       final visibility =
           profile['live_location_visibility'] as String? ?? 'friends';
 
@@ -59,7 +59,6 @@ class _LiveLocationSettingsScreenState
         _isLoading = false;
       });
 
-      // Reprendre le partage si l'utilisateur l'avait déjà activé.
       if (enabled) {
         await _locationService.startSharing(
           visibility: visibility,
@@ -70,7 +69,8 @@ class _LiveLocationSettingsScreenState
 
       setState(() {
         _isLoading = false;
-        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+        _errorMessage =
+            error.toString().replaceFirst('Exception: ', '');
       });
     }
   }
@@ -159,38 +159,67 @@ class _LiveLocationSettingsScreenState
   }) {
     final selected = _visibility == value;
 
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-          color: selected ? primaryGreen : Colors.grey.shade300,
-          width: selected ? 1.5 : 1,
-        ),
-      ),
-      child: RadioListTile<String>(
-        value: value,
-        groupValue: _visibility,
-        activeColor: primaryGreen,
-        onChanged: _isProcessing
-            ? null
-            : (newValue) {
-                if (newValue != null) {
-                  _changeVisibility(newValue);
-                }
-              },
-        secondary: Icon(
-          icon,
-          color: selected ? primaryGreen : Colors.grey.shade600,
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
+    return InkWell(
+      onTap: _isProcessing
+          ? null
+          : () => _changeVisibility(value),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+                ? primaryGreen
+                : Colors.grey.shade300,
+            width: selected ? 1.5 : 1,
           ),
         ),
-        subtitle: Text(description),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: selected
+                  ? primaryGreen
+                  : Colors.grey.shade600,
+              size: 25,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: selected
+                  ? primaryGreen
+                  : Colors.grey,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -202,7 +231,9 @@ class _LiveLocationSettingsScreenState
       appBar: AppBar(
         title: const Text(
           'Partage de position',
-          style: TextStyle(fontWeight: FontWeight.w600),
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+          ),
         ),
         backgroundColor: Colors.white,
         foregroundColor: darkGreen,
@@ -224,15 +255,19 @@ class _LiveLocationSettingsScreenState
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: primaryGreen.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(14),
+                              color: primaryGreen.withValues(
+                                alpha: 0.1,
+                              ),
+                              borderRadius:
+                                  BorderRadius.circular(14),
                             ),
                             child: const Icon(
                               Icons.location_on,
@@ -243,7 +278,8 @@ class _LiveLocationSettingsScreenState
                           const SizedBox(width: 14),
                           const Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   'Position GPS en direct',
@@ -272,7 +308,8 @@ class _LiveLocationSettingsScreenState
                           color: _isEnabled
                               ? const Color(0xFFE8F5EE)
                               : const Color(0xFFF1F2F3),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius:
+                              BorderRadius.circular(12),
                         ),
                         child: Row(
                           children: [
@@ -305,13 +342,15 @@ class _LiveLocationSettingsScreenState
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed:
-                              _isProcessing ? null : _toggleSharing,
+                          onPressed: _isProcessing
+                              ? null
+                              : _toggleSharing,
                           icon: _isProcessing
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child: CircularProgressIndicator(
+                                  child:
+                                      CircularProgressIndicator(
                                     strokeWidth: 2,
                                     color: Colors.white,
                                   ),
@@ -331,11 +370,13 @@ class _LiveLocationSettingsScreenState
                                 ? Colors.red.shade600
                                 : primaryGreen,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
+                            padding:
+                                const EdgeInsets.symmetric(
                               vertical: 15,
                             ),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius:
+                                  BorderRadius.circular(12),
                             ),
                           ),
                         ),
@@ -373,7 +414,8 @@ class _LiveLocationSettingsScreenState
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(12),
                     ),
                     child: Text(
                       _errorMessage!,

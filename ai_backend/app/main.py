@@ -1,10 +1,12 @@
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.documents import router as documents_router
 from app.api.chat import router as chat_router
 from app.api.knowledge_images import router as knowledge_images_router
 from app.api.visual_search import router as visual_search_router
+
 
 app = FastAPI(
     title="EMSI Skill Graph AI",
@@ -12,6 +14,17 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[],
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# API routers
 app.include_router(documents_router)
 app.include_router(chat_router)
 app.include_router(visual_search_router)
