@@ -62,12 +62,15 @@ class _ProfileGateState extends State<_ProfileGate> {
     try {
       final profile = await _profileService.getCurrentProfile();
 
-      final complete = profile != null &&
-          (profile.fullName?.trim().isNotEmpty ?? false) &&
-          (profile.campus?.trim().isNotEmpty ?? false) &&
-          (profile.branch?.trim().isNotEmpty ?? false) &&
-          profile.studyYear != null &&
-          (profile.targetRole?.trim().isNotEmpty ?? false);
+     final complete = profile != null &&
+    (profile.firstName?.trim().isNotEmpty ?? false) &&
+    (profile.lastName?.trim().isNotEmpty ?? false) &&
+    (profile.studentNumber?.trim().isNotEmpty ?? false) &&
+    (profile.city?.trim().isNotEmpty ?? false) &&
+    (profile.campus?.trim().isNotEmpty ?? false) &&
+    (profile.branch?.trim().isNotEmpty ?? false) &&
+    profile.studyYear != null &&
+    (profile.targetRole?.trim().isNotEmpty ?? false);
 
       if (!mounted) return;
 

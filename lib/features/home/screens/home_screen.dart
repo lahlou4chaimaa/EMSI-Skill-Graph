@@ -1,9 +1,11 @@
+
 import 'package:flutter/material.dart';
 
 import '../../auth/services/auth_service.dart';
 import '../../profile/services/profile_service.dart';
 import '../../skills/screens/my_skills_screen.dart';
 import '../../career/screens/career_screens.dart';
+import '../../map/screens/student_map_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -62,22 +64,55 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (error) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Erreur : $error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur : $error')),
+      );
     }
   }
 
   void _openSkills() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const MySkillsScreen()),
+      MaterialPageRoute(
+        builder: (_) => const MySkillsScreen(),
+      ),
+    );
+  }
+
+  void _openCareer() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CareerScreen(),
+      ),
+    );
+  }
+
+  void _openStudentMap() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const StudentMapScreen(),
+      ),
+    );
+  }
+
+  void _showComingSoon(String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$feature will be available soon.'),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
     }
 
     return Scaffold(
@@ -98,16 +133,19 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Text(
               'Hello, $_name',
-              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-
             const SizedBox(height: 6),
-
             const Text(
               'Build your career path with your skills.',
-              style: TextStyle(color: Colors.grey, fontSize: 16),
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 16,
+              ),
             ),
-
             const SizedBox(height: 24),
 
             _ProfileCard(
@@ -121,9 +159,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const Text(
               'Your Career Intelligence',
-              style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-
             const SizedBox(height: 14),
 
             Row(
@@ -142,13 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.analytics_outlined,
                     title: 'Gap Analysis',
                     subtitle: 'Find missing skills',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Gap Analysis will be available soon.'),
-                        ),
-                      );
-                    },
+                    onTap: () => _showComingSoon('Gap Analysis'),
                   ),
                 ),
               ],
@@ -163,13 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.route_outlined,
                     title: 'Roadmap',
                     subtitle: 'Build your plan',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Roadmap will be available soon.'),
-                        ),
-                      );
-                    },
+                    onTap: () => _showComingSoon('Roadmap'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -178,15 +206,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.work_outline,
                     title: 'Career',
                     subtitle: 'Explore target jobs',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const CareerScreen()),
-                      );
-                    },
+                    onTap: _openCareer,
                   ),
                 ),
               ],
+            ),
+
+            const SizedBox(height: 12),
+
+            _FeatureCard(
+              icon: Icons.map_outlined,
+              title: 'Student Map',
+              subtitle: 'Discover EMSI students',
+              onTap: _openStudentMap,
             ),
           ],
         ),
@@ -218,21 +250,28 @@ class _ProfileCard extends StatelessWidget {
           children: [
             const Text(
               'Student Profile',
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-
             const SizedBox(height: 14),
-
-            _InfoRow(icon: Icons.school_outlined, label: branch),
-
-            _InfoRow(icon: Icons.location_city_outlined, label: campus),
-
+            _InfoRow(
+              icon: Icons.school_outlined,
+              label: branch,
+            ),
+            _InfoRow(
+              icon: Icons.location_city_outlined,
+              label: campus,
+            ),
             _InfoRow(
               icon: Icons.calendar_today_outlined,
               label: 'Year ${studyYear ?? '-'}',
             ),
-
-            _InfoRow(icon: Icons.work_outline, label: targetRole),
+            _InfoRow(
+              icon: Icons.work_outline,
+              label: targetRole,
+            ),
           ],
         ),
       ),
@@ -244,7 +283,10 @@ class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _InfoRow({required this.icon, required this.label});
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -253,9 +295,15 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(width: 2),
-          Icon(icon, size: 20, color: const Color(0xFF356AE6)),
+          Icon(
+            icon,
+            size: 20,
+            color: const Color(0xFF356AE6),
+          ),
           const SizedBox(width: 10),
-          Expanded(child: Text(label.isEmpty ? '-' : label)),
+          Expanded(
+            child: Text(label.isEmpty ? '-' : label),
+          ),
         ],
       ),
     );
@@ -285,22 +333,27 @@ class _FeatureCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              Icon(icon, size: 34, color: const Color(0xFF356AE6)),
-
+              Icon(
+                icon,
+                size: 34,
+                color: const Color(0xFF356AE6),
+              ),
               const SizedBox(height: 10),
-
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-
               const SizedBox(height: 4),
-
               Text(
                 subtitle,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                ),
               ),
             ],
           ),
