@@ -1,3 +1,4 @@
+
 import 'skill.dart';
 
 class JobSkill {
@@ -22,14 +23,12 @@ class JobSkill {
       id: map['id'] as String,
       jobId: map['job_id'] as String,
       skillId: map['skill_id'] as String,
-      requiredLevel: map['required_level'] as int,
-      skill: skillData == null
-          ? null
-          : Skill.fromMap(
-              Map<String, dynamic>.from(
-                skillData as Map,
-              ),
-            ),
+      requiredLevel: (map['required_level'] as num?)?.toInt() ?? 1,
+      skill: skillData != null
+          ? Skill.fromMap(
+              Map<String, dynamic>.from(skillData as Map),
+            )
+          : null,
     );
   }
 }

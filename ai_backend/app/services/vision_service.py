@@ -7,32 +7,37 @@ from PIL import Image, UnidentifiedImageError
 
 from app.core.config import settings
 
-
 MAX_IMAGE_PIXELS = 20_000_000
 
-
 VISION_PROMPT = """
-You are the visual analysis engine of EMSI Assistant.
+Tu es le moteur d'analyse visuelle de l'assistant EMSI.
 
-Analyze the provided image carefully.
+Analyse attentivement l'image.
 
-Your tasks:
-1. Describe the visible scene, objects, documents and people.
-2. If people are visible, describe their visible appearance, clothing,
-   position and actions without identifying them by their faces.
-3. Read and transcribe visible text when possible.
-4. Identify logos, signs, titles and other visible information.
-5. Distinguish clearly between what is visible and what is uncertain.
-6. Never invent names, functions, dates or institutional information.
-7. Never claim that a person is a specific real-world individual based
-   only on their face.
-8. If the image contains a document, describe its content and structure.
-9. Answer in French.
+Objectifs :
 
-Return a structured but concise description.
+1. Décris précisément ce qui est visible.
+2. Si une personne est visible, décris :
+   - son apparence générale,
+   - ses vêtements,
+   - sa position,
+   - les éléments distinctifs visibles.
+3. Lis tout texte visible dans l'image.
+4. Identifie les logos, titres, légendes, fonctions ou autres
+   informations institutionnelles visibles.
+5. Si l'image semble provenir d'une brochure, indique les éléments
+   pouvant aider à retrouver la personne ou le contenu dans cette
+   brochure.
+6. Ne fabrique aucune information.
+7. Ne déduis jamais l'identité d'une personne uniquement à partir
+   de son visage.
+8. L'identité finale doit être déterminée uniquement à partir des
+   informations textuelles ou institutionnelles retrouvées dans
+   les documents EMSI.
+9. Réponds en français.
+
+Retourne une description claire et concise.
 """
-
-
 def prepare_image(image_bytes: bytes) -> bytes:
     try:
         image = Image.open(BytesIO(image_bytes))
@@ -62,7 +67,6 @@ def prepare_image(image_bytes: bytes) -> bytes:
     )
 
     return output.getvalue()
-
 
 async def analyze_image_with_qwen(
     image_bytes: bytes,

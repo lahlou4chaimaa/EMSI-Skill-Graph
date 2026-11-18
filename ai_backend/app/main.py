@@ -1,6 +1,8 @@
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.documents import router as documents_router
 from app.api.chat import router as chat_router
@@ -22,6 +24,16 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Static files: brochure images served to the front-end
+IMAGES_DIR = Path("storage/brochure_images")
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+app.mount(
+    "/brochure-images",
+    StaticFiles(directory=str(IMAGES_DIR)),
+    name="brochure-images",
 )
 
 # API routers

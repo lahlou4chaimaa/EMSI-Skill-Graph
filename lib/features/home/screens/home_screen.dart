@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 
 import '../../auth/services/auth_service.dart';
 import '../../profile/services/profile_service.dart';
-import '../../skills/screens/my_skills_screen.dart';
-import '../../career/screens/career_screens.dart';
+import '../../career/screens/career_screen.dart';
 import '../../map/screens/student_map_screen.dart';
 import '../../ai_assistant/screens/ai_assistant_screen.dart';
+import '../../skills/screens/skill_gap_screen.dart';
+import '../../skills/screens/skill_graph_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -70,16 +71,23 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
   }
+void _openSkills() {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => const SkillGraphScreen(),
+    ),
+  );
+}
 
-  void _openSkills() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const MySkillsScreen(),
-      ),
-    );
-  }
-
+void _openGapAnalysis() {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => const SkillGapScreen(),
+    ),
+  );
+}
   void _openCareer() {
     Navigator.push(
       context,
@@ -192,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.analytics_outlined,
                     title: 'Gap Analysis',
                     subtitle: 'Find missing skills',
-                    onTap: () => _showComingSoon('Gap Analysis'),
+                    onTap: _openGapAnalysis,
                   ),
                 ),
               ],
