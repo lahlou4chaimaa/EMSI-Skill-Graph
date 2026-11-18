@@ -12,6 +12,8 @@ import '../services/skill_service.dart';
 import '../services/skill_gap_analyzer.dart';
 import '../services/saved_jobs_service.dart';
 import '../services/gap_analysis_history_service.dart';
+import '../../roadmap/services/roadmap_service.dart';
+import '../../roadmap/screens/roadmap_details_screen.dart';
 
 class SkillGapScreen extends StatefulWidget {
   const SkillGapScreen({super.key});
@@ -24,6 +26,7 @@ class _SkillGapScreenState extends State<SkillGapScreen>
     with SingleTickerProviderStateMixin {
   final CareerService _careerService = CareerService();
   final SkillService _skillService = SkillService();
+  final RoadmapService _roadmapService = RoadmapService();
   final SavedJobsService _savedJobsService = SavedJobsService();
   final GapAnalysisHistoryService _historyService =
       GapAnalysisHistoryService();
@@ -40,6 +43,7 @@ class _SkillGapScreenState extends State<SkillGapScreen>
 
   bool _loading = true;
   bool _savingAnalysis = false;
+  bool _creatingRoadmap = false;
   bool _savingJob = false;
   bool _loadingHistory = false;
   String? _error;
@@ -240,6 +244,75 @@ class _SkillGapScreenState extends State<SkillGapScreen>
       }
     }
   }
+
+Future<void> _createPersonalizedRoadmap() async {
+  if (_selectedJob == null || _analysis == null || _creatingRoadmap) {
+    return;
+  }
+
+  final gaps = [
+    ..._analysis!.skillsToImprove,
+    ..._analysis!.missingSkills,
+  ];
+
+  if (gaps.isEmpty) {
+    _showMessage(
+      'You already meet all the required skill levels for this career.',
+    );
+    return;
+  }
+
+  setState(() => _creatingRoadmap = true);
+
+  try {
+    // 1. Save the current analysis in history.
+    final savedAnalysis = await _historyService.saveAnalysis(
+      job: _selectedJob!,
+      analysis: _analysis!,
+    );
+
+    // 2. Refresh the analysis history.
+    final updatedHistory = await _historyService.getHistory();
+
+    // 3. Create the roadmap using the saved analysis.
+    final roadmap = await _roadmapService.createRoadmap(
+      job: _selectedJob!,
+      analysis: _analysis!,
+      sourceAnalysisId: savedAnalysis.id,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _history = updatedHistory;
+    });
+
+    // 4. Open the newly created roadmap.
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RoadmapDetailsScreen(
+          roadmapId: roadmap.id,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    // Refresh the screen when returning from roadmap details.
+    await _loadData();
+  } catch (error) {
+    if (!mounted) return;
+
+    _showMessage(
+      'Unable to create roadmap: $error',
+    );
+  } finally {
+    if (mounted) {
+      setState(() => _creatingRoadmap = false);
+    }
+  }
+}
 
   Future<void> _deleteHistoryItem(
     GapAnalysisHistory item,
@@ -507,44 +580,103 @@ class _SkillGapScreenState extends State<SkillGapScreen>
     );
   }
 
-  Widget _buildAnalysisActions() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ElevatedButton.icon(
-          onPressed: _savingAnalysis ? null : _saveCurrentAnalysis,
-          icon: _savingAnalysis
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Icon(Icons.save_outlined),
-          label: Text(
-            _savingAnalysis ? 'Saving...' : 'Save this analysis',
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: primaryBlue,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
+ 
+Widget _buildAnalysisActions() {
+  final hasSkillsToWorkOn = _analysis != null &&
+      (_analysis!.skillsToImprove.isNotEmpty ||
+          _analysis!.missingSkills.isNotEmpty);
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      // CREATE PERSONALIZED ROADMAP
+      ElevatedButton.icon(
+        onPressed: (_creatingRoadmap || !hasSkillsToWorkOn)
+            ? null
+            : _createPersonalizedRoadmap,
+        icon: _creatingRoadmap
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.route_outlined),
+        label: Text(
+          _creatingRoadmap
+              ? 'Creating your roadmap...'
+              : 'Create Personalized Roadmap',
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: darkBlue,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: Colors.grey.shade300,
+          disabledForegroundColor: Colors.grey.shade600,
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: _refreshCurrentAnalysis,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Refresh analysis with my latest skills'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: primaryBlue,
-            padding: const EdgeInsets.symmetric(vertical: 13),
+      ),
+
+      if (!hasSkillsToWorkOn) ...[
+        const SizedBox(height: 8),
+        Text(
+          'You have no missing or improvable skills for this career. '
+          'A roadmap is not necessary at the moment.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.grey.shade600,
+            fontSize: 12,
           ),
         ),
       ],
-    );
-  }
+
+      const SizedBox(height: 12),
+
+      // SAVE ANALYSIS
+      ElevatedButton.icon(
+        onPressed: _savingAnalysis ? null : _saveCurrentAnalysis,
+        icon: _savingAnalysis
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.save_outlined),
+        label: Text(
+          _savingAnalysis ? 'Saving...' : 'Save this analysis',
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryBlue,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      ),
+
+      const SizedBox(height: 10),
+
+      // REFRESH ANALYSIS
+      OutlinedButton.icon(
+        onPressed: _refreshCurrentAnalysis,
+        icon: const Icon(Icons.refresh),
+        label: const Text(
+          'Refresh analysis with my latest skills',
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primaryBlue,
+          padding: const EdgeInsets.symmetric(vertical: 13),
+        ),
+      ),
+    ],
+  );
+}
+
 
   Future<void> _refreshCurrentAnalysis() async {
     if (_selectedJob == null) return;

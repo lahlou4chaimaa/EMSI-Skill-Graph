@@ -115,7 +115,10 @@ def resolve_caption(
     stored_caption: str,
 ) -> str:
     """Recalcule la légende directement depuis le PDF, à l'emplacement de la photo."""
+    print(f"[VISUAL] resolve_caption: page={page_number} bbox={bbox}")
+
     if not bbox:
+        print("[VISUAL] bbox manquant dans la base -> légende stockée uniquement.")
         return stored_caption
 
     try:
@@ -145,6 +148,23 @@ def resolve_caption(
         return stored_caption
 
 
+def answer_is_grounded(answer: str, page_text: str) -> bool:
+    """Vérifie que le nom annoncé par le LLM figure bien dans le texte de la page."""
+    match = re.search(r"s['’]agit d(?:e|u|'|’)\s*([^,\.\n]+)", answer or "", re.IGNORECASE)
+
+    if not match:
+        return True
+
+    name_tokens = norm_tokens(match.group(1))
+
+    if not name_tokens:
+        return True
+
+    page_tokens = norm_tokens(page_text)
+
+    return len(name_tokens & page_tokens) >= min(2, len(name_tokens))
+
+
 def build_direct_answer(caption: str) -> str | None:
     """'Nom | Promotion | Fonction | Société' -> 'Il s'agit de Nom, ...'"""
     parts = [p.strip() for p in (caption or "").split("|") if p.strip()]
@@ -156,6 +176,7 @@ def build_direct_answer(caption: str) -> str | None:
     if len(parts) < 2:
         return None
 
+    parts = [p.rstrip(",") for p in parts]
     name = parts[0]
     role = ", ".join(parts[1:])
 
@@ -244,10 +265,25 @@ async def analyze_image(
         document_id = str(best["document_id"])
         page_number = int(best["page_number"])
         distance = int(best["distance"])
+        bbox = best.get("bbox")
+
+        if not bbox and best.get("id"):
+            row = (
+                supabase.table("knowledge_images")
+                .select("bbox, nearby_text")
+                .eq("id", best["id"])
+                .limit(1)
+                .execute()
+            ).data or []
+
+            if row:
+                bbox = row[0].get("bbox")
+                best["nearby_text"] = best.get("nearby_text") or row[0].get("nearby_text") or ""
+
         caption = resolve_caption(
             document_id,
             page_number,
-            best.get("bbox"),
+            bbox,
             best.get("nearby_text") or "",
         )
         print(f"[VISUAL] Caption: {caption!r}")
@@ -282,36 +318,20 @@ async def analyze_image(
         page_text = "\n\n".join(c["content"] for c in page_chunks)
 
         # 4. Prompt
-        final_question = f"""
-Tu es l'assistant officiel EMSI.
-
-L'étudiant demande :
-{question}
-
-La photographie envoyée a été retrouvée dans une brochure officielle EMSI.
-Document : {best["filename"]}
-Page : {page_number}
-
-Légende située juste à côté de la photo :
-« {caption or "aucune légende détectée"} »
-
-Texte de la page (pour compléter la fonction si besoin) :
-{page_text}
-
-INSTRUCTIONS :
-1. Utilise exclusivement la légende et le texte de cette page.
-2. La légende a priorité : c'est elle qui désigne la personne de la photo.
-3. Donne directement le nom et la fonction s'ils sont présents.
-4. Ne confonds pas cette personne avec une autre personne de la page.
-5. Ne déduis jamais un nom à partir de l'apparence physique.
-6. N'invente aucune information.
-7. Si le texte ne permet pas de confirmer l'identité, dis-le clairement.
-
-Format souhaité :
-Il s'agit de [Nom Prénom], [fonction].
-
-Réponds dans la langue de la question.
-"""
+        if caption:
+            final_question = (
+                f"La personne de la photographie est présentée avec cette "
+                f"légende : « {caption} ». Donne son nom et sa fonction "
+                f"d'après le texte de la page. Réponds par une seule phrase : "
+                f"« Il s'agit de [Nom], [fonction]. »"
+            )
+        else:
+            final_question = (
+                "Quel est le nom et la fonction de la personne présentée "
+                "avec la photographie de cette page ? Réponds par une seule "
+                "phrase : « Il s'agit de [Nom], [fonction]. » Si le nom "
+                "n'est pas écrit dans le texte, dis-le simplement."
+            )
 
         direct_answer = build_direct_answer(caption)
 
@@ -324,6 +344,14 @@ Réponds dans la langue de la question.
                 question=final_question,
                 context_chunks=page_chunks,
             )
+
+            if not answer_is_grounded(answer, page_text):
+                print(f"[VISUAL] Nom non présent dans la page, réponse rejetée: {answer!r}")
+                answer = (
+                    "J'ai retrouvé cette photo dans une brochure EMSI "
+                    f"(page {page_number}), mais le texte de la page ne me "
+                    "permet pas de confirmer le nom de cette personne."
+                )
 
         similarity = round(max(0.0, 1.0 - distance / 128.0), 4)
 

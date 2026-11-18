@@ -1,4 +1,3 @@
-
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -10,6 +9,7 @@ class _ChatMessage {
   final String text;
   final bool isUser;
   final List<AiAssistantSource> sources;
+  final List<AiAssistantPhoto> photos;
   final bool isError;
   final Uint8List? imageBytes;
 
@@ -17,6 +17,7 @@ class _ChatMessage {
     required this.text,
     required this.isUser,
     this.sources = const [],
+    this.photos = const [],
     this.isError = false,
     this.imageBytes,
   });
@@ -216,6 +217,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
             text: response.answer,
             isUser: false,
             sources: response.sources,
+            photos: response.photos,
           ),
         );
 
@@ -258,6 +260,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   void _clearConversation() {
     if (_isLoading) return;
+
+    // Réinitialiser également l'identifiant de conversation
+    // utilisé par le backend.
+    _assistantService.startNewConversation();
 
     setState(() {
       _messages.clear();
@@ -629,6 +635,8 @@ class _MessageBubble extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                   ],
+
+                  // Réponse textuelle
                   Text(
                     message.text,
                     style: TextStyle(
@@ -641,6 +649,16 @@ class _MessageBubble extends StatelessWidget {
                       height: 1.55,
                     ),
                   ),
+
+                  // Photos retrouvées dans les documents EMSI
+                  if (message.photos.isNotEmpty) ...[
+                    const SizedBox(height: 13),
+                    ...message.photos.map(
+                      (photo) => _buildPhotoCard(context, photo),
+                    ),
+                  ],
+
+                  // Sources documentaires
                   if (message.sources.isNotEmpty) ...[
                     const SizedBox(height: 13),
                     Divider(
@@ -706,6 +724,162 @@ class _MessageBubble extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  // --------------------------------------------------
+  // AFFICHAGE D'UNE PHOTO RETROUVEE
+  // --------------------------------------------------
+
+  Widget _buildPhotoCard(
+    BuildContext context,
+    AiAssistantPhoto photo,
+  ) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FD),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(
+          color: const Color(0xFFE3E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(12),
+            ),
+            child: GestureDetector(
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (dialogContext) {
+                    return Dialog(
+                      backgroundColor: Colors.black,
+                      insetPadding: const EdgeInsets.all(16),
+                      child: Stack(
+                        children: [
+                          InteractiveViewer(
+                            minScale: 0.5,
+                            maxScale: 4,
+                            child: Image.network(
+                              photo.url,
+                              fit: BoxFit.contain,
+                              width: double.infinity,
+                              errorBuilder: (_, _, _) {
+                                return const Padding(
+                                  padding: EdgeInsets.all(30),
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: Colors.white,
+                                    size: 45,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          Positioned(
+                            top: 5,
+                            right: 5,
+                            child: IconButton(
+                              onPressed: () {
+                                Navigator.pop(dialogContext);
+                              },
+                              icon: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+              child: Image.network(
+                photo.url,
+                width: double.infinity,
+                height: 210,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+
+                  return Container(
+                    height: 210,
+                    alignment: Alignment.center,
+                    color: const Color(0xFFF0F3F9),
+                    child: const CircularProgressIndicator(
+                      color: primaryBlue,
+                      strokeWidth: 2,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    height: 210,
+                    alignment: Alignment.center,
+                    color: const Color(0xFFF0F3F9),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.grey,
+                          size: 35,
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Impossible de charger cette photo',
+                          style: TextStyle(
+                            color: Colors.black54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(11),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.image_outlined,
+                  color: primaryBlue,
+                  size: 19,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    photo.caption.isEmpty
+                        ? 'Photo issue des documents EMSI'
+                        : photo.caption,
+                    style: const TextStyle(
+                      color: darkBlue,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.zoom_in,
+                  color: Colors.black45,
+                  size: 18,
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

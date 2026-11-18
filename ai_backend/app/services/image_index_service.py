@@ -1,4 +1,5 @@
 import hashlib
+import re
 from pathlib import Path
 
 import fitz
@@ -38,7 +39,7 @@ def _union(boxes: list) -> tuple:
     )
 
 
-def get_nearby_text(page, rect, max_dist: float = CAPTION_MAX_DISTANCE) -> str:
+def _caption_from_quotes(page, rect, max_dist: float = CAPTION_MAX_DISTANCE) -> str:
     """
     Retourne la légende (nom + promotion + fonction) la plus proche de l'image.
 
@@ -96,6 +97,10 @@ def get_nearby_text(page, rect, max_dist: float = CAPTION_MAX_DISTANCE) -> str:
 
             lines = [_line_text(l) for l in block.get("lines", [])]
             lines = [t for t in lines if t]
+
+            if not lines or not _looks_like_name(lines[0]):
+                continue
+
             text = " | ".join(lines)
 
             if len(text) < 3 or len(text) > 250 or "«" in text:
@@ -107,6 +112,181 @@ def get_nearby_text(page, rect, max_dist: float = CAPTION_MAX_DISTANCE) -> str:
     candidates.sort(key=lambda item: item[0])
 
     return candidates[0][1] if candidates else ""
+
+
+def _all_lines(page) -> list:
+    lines = []
+
+    for block in page.get_text("dict").get("blocks", []):
+        if block.get("type") != 0:
+            continue
+
+        for line in block.get("lines", []):
+            text = _line_text(line)
+            if text:
+                lines.append((line["bbox"], text))
+
+    return lines
+
+
+def _caption_below(
+    page,
+    rect,
+    max_gap: float = 120,
+    line_gap: float = 20,
+    tolerances: tuple | None = None,
+) -> str:
+    """
+    Légende située directement SOUS la photo : on prend les lignes alignées
+    horizontalement avec la photo, puis on lit vers le bas jusqu'au « ou jusqu'à
+    un trou dans le texte.
+
+    Les portraits ronds sont souvent une image rectangulaire masquée dont le
+    cadre déborde sur le texte : on essaie donc plusieurs tolérances.
+    """
+    margin = 40
+    lines = _all_lines(page)
+
+    # Mode strict : si le cadre recouvre plusieurs lignes de texte, il déborde
+    # sur la légende (image masquée) : on laisse les autres méthodes décider.
+    if tolerances is None:
+        inside = [
+            1 for bbox, text in lines
+            if rect.y0 <= (bbox[1] + bbox[3]) / 2 <= rect.y1
+            and bbox[2] > rect.x0
+            and bbox[0] < rect.x1
+            and len(text) >= 3
+        ]
+
+        if len(inside) >= 2:
+            return ""
+
+    for tolerance in (tolerances or (5,)):
+        below = [
+            (bbox, text)
+            for bbox, text in lines
+            if bbox[1] >= rect.y1 - tolerance
+            and bbox[1] - rect.y1 <= max_gap
+            and bbox[2] > rect.x0 - margin
+            and bbox[0] < rect.x1 + margin
+            and len(text) >= 3
+            and not text.isdigit()
+        ]
+
+        if not below:
+            continue
+
+        below.sort(key=lambda item: item[0][1])
+
+        # La légende commence par un nom : sinon c'est du texte courant
+        # (ou une légende dont le début est caché par le cadre : on élargit).
+        if not _looks_like_name(below[0][1]):
+            continue
+
+        collected = []
+        previous_bottom = None
+
+        for bbox, text in below:
+            if "«" in text:
+                break
+
+            if previous_bottom is not None and bbox[1] - previous_bottom > line_gap:
+                break
+
+            collected.append(text.strip().rstrip(","))
+            previous_bottom = bbox[3]
+
+            if len(collected) >= 6:
+                break
+
+        if collected:
+            return " | ".join(collected)
+
+    return ""
+
+
+_ROLE_RE = re.compile(
+    r"\b(directeur|directrice|pr[ée]sident|pr[ée]sidente|responsable|doyen|"
+    r"recteur|fondateur|fondatrice|chef|manager|ceo|dg|pdg)\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_name(text: str) -> bool:
+    words = text.split()
+
+    if not 2 <= len(words) <= 6 or len(text) > 60:
+        return False
+
+    if any(ch.isdigit() for ch in text):
+        return False
+
+    # Un titre de fonction (« MOT DU DIRECTEUR GÉNÉRAL ») n'est pas un nom
+    if _ROLE_RE.search(text):
+        return False
+
+    if text.endswith((".", ",", ";", ":", "»")) or "«" in text:
+        return False
+
+    return any(w[0].isupper() for w in words if w[0].isalpha())
+
+
+def _caption_from_roles(page, rect) -> str:
+    """
+    Repli pour les pages où le nom est en signature, loin de la photo :
+    on cherche « Nom Prénom » suivi d'une ligne de fonction, et on garde
+    le couple le plus proche de la photo.
+    """
+    lines = _all_lines(page)
+    clusters = []
+
+    for i, (bbox, text) in enumerate(lines):
+        if i == 0 or len(text) > 90 or not _ROLE_RE.search(text):
+            continue
+
+        name_bbox, name_text = lines[i - 1]
+
+        if not _looks_like_name(name_text):
+            continue
+
+        parts = [name_text, text.rstrip(",")]
+        boxes = [name_bbox, bbox]
+
+        # Lignes de fonction suivantes (courtes, sans guillemet)
+        for next_bbox, next_text in lines[i + 1:i + 3]:
+            if "«" in next_text or len(next_text) > 90:
+                break
+            parts.append(next_text.rstrip(","))
+            boxes.append(next_bbox)
+
+        clusters.append((_rect_distance(rect, _union(boxes)), " | ".join(parts)))
+
+    if not clusters:
+        return ""
+
+    clusters.sort(key=lambda item: item[0])
+
+    return clusters[0][1]
+
+
+def get_nearby_text(page, rect, max_dist: float = CAPTION_MAX_DISTANCE) -> str:
+    """
+    Légende d'une photo, par ordre de fiabilité :
+    1. lignes juste sous la photo (cadre exact),
+    2. couple « Nom / Fonction » le plus proche (nom en signature, etc.),
+    3. structure des témoignages (« ... »),
+    4. lignes sous la photo avec cadre débordant (portraits ronds masqués).
+    """
+    return (
+        _caption_below(page, rect)
+        or _caption_from_roles(page, rect)
+        or _caption_from_quotes(page, rect, max_dist)
+        or _caption_below(
+            page,
+            rect,
+            tolerances=(rect.height * 0.3, rect.height * 0.6),
+        )
+    )
 
 
 def extract_images_from_pdf(
